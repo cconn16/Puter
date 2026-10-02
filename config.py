@@ -18,4 +18,4 @@ ALIAS_HEADERS = ["Alias", "Canonical Exercise"]
 DEFAULT_UNIT = "lb"
 
 HOST = "0.0.0.0"  
-PORT = 5000  
+PORT = 80 
