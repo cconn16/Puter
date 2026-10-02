@@ -1,0 +1,200 @@
+<!doctype html>  
+<html lang="en">  
+<head>  
+<meta charset="utf-8">  
+<meta name="viewport" content="width=device-width, initial-scale=1">  
+<title>Workout Tracker</title>  
+<style>  
+  :root {  
+    --bg:#0b0d10; --card:#151a20; --fg:#e8eaed; --dim:#8b949e;  
+    --line:#232a31; --ok:#4ade80; --gold:#fbbf24; --warn:#f87171; --ask:#60a5fa;  
+  }  
+  * { box-sizing:border-box; }  
+  body {  
+    margin:0; background:var(--bg); color:var(--fg); padding:20px;  
+    font:400 17px/1.45 ui-monospace, "DejaVu Sans Mono", Menlo, monospace;  
+  }  
+  header {  
+    display:flex; justify-content:space-between; align-items:baseline;  
+    border-bottom:2px solid var(--line); padding-bottom:10px; margin-bottom:18px;  
+  }  
+  h1 { font-size:21px; letter-spacing:5px; margin:0; font-weight:600; }  
+  .count { color:var(--dim); font-size:15px; }  
+  input[type=text] {  
+    width:100%; padding:16px 18px; font:inherit; font-size:21px;  
+    background:var(--card); color:var(--fg); border:2px solid var(--line);  
+    border-radius:8px; outline:none;  
+  }  
+  input[type=text]:focus { border-color:var(--ask); }  
+  .hint { color:var(--dim); font-size:14px; margin-top:8px; }  
+  .hint code { color:#9fb3c8; }  
+  .reply {  
+    margin:16px 0 26px; padding:16px 20px; background:var(--card);  
+    border-left:7px solid var(--line); border-radius:6px;  
+  }  
+  .reply .msg { font-size:23px; }  
+  .reply .detail { font-size:16px; color:var(--dim); margin-top:6px; word-break:break-word; }  
+  .reply.ok   { border-left-color:var(--ok); }  
+  .reply.pr   { border-left-color:var(--gold); }  
+  .reply.pr .detail { color:var(--gold); }  
+  .reply.warn { border-left-color:var(--warn); }  
+  .reply.ask  { border-left-color:var(--ask); }  
+  .reply.ask .msg { color:var(--ask); }  
+  .cols { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:30px; }  
+  h2 {  
+    font-size:14px; letter-spacing:3px; color:var(--dim); margin:0 0 10px;  
+    border-bottom:1px solid var(--line); padding-bottom:6px;  
+  }  
+  table { width:100%; border-collapse:collapse; }  
+  td { padding:7px 0; font-size:17px; }  
+  tr + tr td { border-top:1px solid var(--line); }  
+  .num { text-align:right; }  
+  .sch { color:var(--dim); }  
+  .wt  { color:var(--ok); font-weight:600; }  
+  .empty { color:var(--dim); font-size:15px; padding:8px 0; }  
+  details { margin-top:28px; color:var(--dim); font-size:15px; }  
+  details summary { cursor:pointer; }  
+  details form { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }  
+  details input {  
+    padding:9px; background:var(--card); color:var(--fg);  
+    border:1px solid var(--line); border-radius:5px; font:inherit; width:110px;  
+  }  
+  details button {  
+    padding:9px 18px; background:var(--ok); color:#06240f; border:0;  
+    border-radius:5px; font:inherit; font-weight:600; cursor:pointer;  
+  }  
+</style>  
+</head>  
+<body>  
+  <header>  
+    <h1>WORKOUT TRACKER</h1>  
+    <span class="count" id="count"></span>  
+  </header>
+
+  <input id="cmd" type="text" autocomplete="off" autocapitalize="off"  
+         spellcheck="false" autofocus placeholder="bench 3x8 225">  
+  <div class="hint">  
+    ↑ for previous · <code>pr bench 5x5</code> ·  
+    <code>history squat</code> · <code>program</code> ·  
+    <code>undo</code> · <code>help</code>  
+  </div>
+
+  <div id="reply" class="reply">  
+    <div class="msg">Loading…</div>  
+    <div class="detail"></div>  
+  </div>
+
+  <div class="cols">  
+    <div><h2>RECENT</h2><table id="recent"></table></div>  
+    <div><h2>PERSONAL RECORDS</h2><table id="prs"></table></div>  
+    <div><h2>TODAY'S PROGRAM</h2><table id="program"></table></div>  
+  </div>
+
+  <details>  
+    <summary>Manual entry</summary>  
+    <form id="manual">  
+      <input name="exercise" placeholder="exercise" style="width:180px" required>  
+      <input name="sets" type="number" placeholder="sets" min="1" required>  
+      <input name="reps" type="number" placeholder="reps" min="1" required>  
+      <input name="weight" type="number" step="0.5" placeholder="weight" required>  
+      <button type="submit">Log</button>  
+    </form>  
+  </details>
+
+<script>  
+const $ = id => document.getElementById(id);  
+let history = [], histPos = 0;
+
+function fillTable(el, data, cols, emptyMsg) {  
+  if (!data || !data.length) {  
+    el.innerHTML = '<tr><td class="empty">' + emptyMsg + '</td></tr>';  
+    return;  
+  }  
+  el.innerHTML = data.map(function (r) {  
+    return '<tr>' + cols(r).map(function (c) {  
+      return '<td class="' + (c[1] || '') + '">' + (c[0] == null ? '' : c[0]) + '</td>';  
+    }).join('') + '</tr>';  
+  }).join('');  
+}
+
+function renderTables(d) {  
+  $('count').textContent = d.today_count ? d.today_count + ' logged today' : '';  
+  $('cmd').placeholder = d.pending ? 'answer the question above\u2026' : 'bench 3x8 225';
+
+  fillTable($('recent'), d.recent, function (r) {  
+    return [[r.Exercise, 'ex'], [r.Sets + ' \u00d7 ' + r.Reps, 'sch num'],  
+            [r.Weight, 'wt num']];  
+  }, 'No entries yet');
+
+  fillTable($('prs'), d.prs, function (p) {  
+    return [[p.Exercise, 'ex'], [p.Sets + ' \u00d7 ' + p.Reps, 'sch num'],  
+            [p.Weight, 'wt num']];  
+  }, 'No PRs yet');
+
+  fillTable($('program'), d.program, function (p) {  
+    return [[p.Exercise, 'ex'], [p.Sets + ' \u00d7 ' + p.Reps, 'sch num'],  
+            [p.Prescription || '', 'sch']];  
+  }, 'Rest day');  
+}
+
+function renderReply(r) {  
+  const el = $('reply');  
+  el.className = 'reply ' + (r.kind || 'info');  
+  el.children[0].textContent = r.message;  
+  el.children[1].textContent = r.detail || '';  
+}
+
+function renderAll(d) { renderReply(d.reply); renderTables(d); }
+
+async function post(url, body) {  
+  try {  
+    const res = await fetch(url, {  
+      method: 'POST',  
+      headers: { 'Content-Type': 'application/json' },  
+      body: JSON.stringify(body)  
+    });  
+    renderAll(await res.json());  
+  } catch (e) {  
+    renderReply({ message: 'Connection lost', detail: String(e), kind: 'warn' });  
+  }  
+}
+
+$('cmd').addEventListener('keydown', function (e) {  
+  if (e.key === 'Enter') {  
+    const v = e.target.value.trim();  
+    if (!v) return;  
+    history.push(v);  
+    histPos = history.length;  
+    e.target.value = '';  
+    post('/api/command', { text: v });  
+  } else if (e.key === 'ArrowUp') {  
+    if (histPos > 0) { e.preventDefault(); e.target.value = history[--histPos]; }  
+  } else if (e.key === 'ArrowDown') {  
+    e.preventDefault();  
+    if (histPos < history.length - 1) { e.target.value = history[++histPos]; }  
+    else { histPos = history.length; e.target.value = ''; }  
+  }  
+});
+
+$('manual').addEventListener('submit', function (e) {  
+  e.preventDefault();  
+  post('/api/manual', Object.fromEntries(new FormData(e.target)));  
+  e.target.reset();  
+  $('cmd').focus();  
+});
+
+document.addEventListener('click', function (e) {  
+  if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON' &&  
+      e.target.tagName !== 'SUMMARY') {  
+    $('cmd').focus();  
+  }  
+});
+
+// Initial load, then slow polling to catch edits made directly in Excel.  
+fetch('/api/state').then(r => r.json()).then(renderAll);  
+setInterval(function () {  
+  fetch('/api/state').then(r => r.json()).then(renderTables);  
+}, 20000);  
+</script>  
+</body>  
+</html>  
